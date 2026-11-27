@@ -1,4 +1,4 @@
-ame: Build WDA H264 Test IPA
+name: Build WDA H264 Test IPA
 on:
   workflow_dispatch:
     inputs:
