@@ -1,0 +1,140 @@
+Conversation Log
+
+Cửa sổ trong ảnh là Finder Settings, chưa phải System Settings:
+
+Bấm vào biểu tượng quả táo  ở góc trên bên trái → chọn System Settings...
+Vào General → Sharing → gạt bật Remote Login, rồi xem username trong dòng ssh <username>@... hiện bên dưới và báo lại mình.
+
+SSH trên máy ảo macOS (127.0.0.1:50922) đã hoạt động!
+
+Bạn bấm vào biểu tượng (i) ngay bên cạnh dòng Remote Login để xem tên username, rồi nhắn lại mình username và mật khẩu của máy ảo macOS để mình SSH vào kiểm tra Xcode / iOS SDK / ldid và tiến hành build wda-h264-test.ipa.
+
+mật khẩu: 123456
+
+Đã kết nối SSH thành công vào máy ảo macOS 14.0 (adsspeed@127.0.0.1:50922, còn trống 50 GiB ổ đĩa):
+
+Trạng thái công cụ hiện tại:
+Chưa có Xcode và iOS SDK (xcode-select: No developer tools were found).
+Chưa có Homebrew và ldid.
+
+Để có iPhoneOS.sdk biên dịch WebDriverAgent (v11.2.0) + IFarmH264Server ra wda-h264-test.ipa, có 2 hướng:
+
+Build bằng GitHub Actions (macos-14 / macos-15) — Nhanh nhất (~2–3 phút):
+
+Runner macOS của GitHub có sẵn Xcode + iOS SDK (build không cần Apple ID bằng CODE_SIGNING_ALLOWED=NO, rồi gộp entitlement và ký ldid cho TrollStore).
+Không tốn dung lượng tải Xcode 10+ GB và không bị chậm bởi cấu hình VM 4 GB RAM / 1 vCPU.
+
+Cài Xcode trực tiếp vào máy ảo macOS Sonoma này:
+
+Còn đủ 50 GiB trống để cài brew, ldid và Xcode (~10–15 GB), nhưng tải Xcode cần tài khoản Apple ID và nên tăng cấu hình QEMU lên 8 GB RAM / 4 vCPU để xcodebuild không bị nghẽn.
+
+Bạn muốn đi theo hướng GitHub Actions (mình chuẩn bị sẵn file workflow .github/workflows/build-wda-h264.yml đẩy lên repo GitHub của bạn là tự ra file .ipa) hay muốn cài Xcode ngay trên máy ảo macOS này?
+
+GitHub Actions (mình chuẩ… thao tác người dùng cần làm
+
+Mình đã tạo sẵn file workflow build-wda-h264.yml (tự clone appium/WebDriverAgent v11.2.0, nhúng IFarmH264Server, build bằng Xcode trên macos-14, gộp entitlement và ký ldid).
+
+Thao tác bạn cần làm trên GitHub (chỉ 4 bước, ~3 phút):
+Tạo 1 repo mới trên GitHub (có thể để Private hoặc Public).
+Đưa 2 thư mục/file sau lên repo đó (giữ đúng cấu trúc):
+Thư mục ios-h264-server/ (copy nguyên từ ios-h264-server, gồm IFarmH264Server.h, IFarmH264Server.m, entitlements.plist).
+File .github/workflows/build-wda-h264.yml (copy từ build-wda-h264.yml).
+Bấm chạy build:
+Trên GitHub vào tab Actions → chọn Build WDA H264 Test IPA → bấm Run workflow (mặc định tag v11.2.0).
+Tải .ipa và cài thử lên 1 iPhone:
+Đợi ~2–3 phút chạy xong, kéo xuống mục Artifacts tải về wda-h264-test-ipa (wda-h264-test.ipa).
+Cài file wda-h264-test.ipa qua TrollStore lên 1 iPhone thử nghiệm, rồi cắm vào iFarm kiểm tra xem Electron có lên hình H.264 qua WebCodecs và vẫn tap/vuốt bình thường không.
+hướng dẫn upload
+
+Bạn có thể chọn 1 trong 2 cách sau để đưa lên GitHub:
+
+Cách 1: Upload trực tiếp trên trình duyệt (Không cần lệnh Git)
+Vào GitHub → bấm New repository → đặt tên (ví dụ wda-h264-build), chọn Private → tích Add a README file → bấm Create repository.
+Tạo file workflow:
+Trong repo vừa tạo, bấm Add file → Create new file.
+Ở ô tên file, gõ chính xác: .github/workflows/build-wda-h264.yml (GitHub tự tạo thư mục .github/workflows/).
+Mở file build-wda-h264.yml bằng Notepad, copy toàn bộ nội dung dán vào → bấm Commit changes.
+Upload thư mục ios-h264-server:
+Quay lại trang gốc của repo → bấm Add file → Upload files.
+Kéo thả cả thư mục ios-h264-server (hoặc mở thư mục, chọn 3 file IFarmH264Server.h, IFarmH264Server.m, entitlements.plist — nếu kéo từng file thì nhớ đặt đường dẫn ios-h264-server/... hoặc kéo nguyên thư mục ios-h264-server vào khung upload của trình duyệt) → bấm Commit changes.
+Vào tab Actions → chọn Build WDA H264 Test IPA → bấm Run workflow.
+Cách 2: Đẩy bằng Git CLI (Nhanh nếu đã cài Git trên máy)
+
+Mở PowerShell và chạy:
+
+powershell
+mkdir C:\wda-h264-repo
+cd C:\wda-h264-repo
+git init
+mkdir .github\workflows, ios-h264-server
+copy "C:\Users\admin\Downloads\iFarm-AirPlay-H264\resources\app\ios-h264-server\build-wda-h264.yml" .github\workflows\
+copy "C:\Users\admin\Downloads\iFarm-AirPlay-H264\resources\app\ios-h264-server\IFarmH264Server.*" ios-h264-server\
+copy "C:\Users\admin\Downloads\iFarm-AirPlay-H264\resources\app\ios-h264-server\entitlements.plist" ios-h264-server\
+git add .
+git commit -m "Add WDA H264 build workflow"
+git branch -M main
+git remote add origin https://github.com/<TEN_GITHUB_CUA_BAN>/wda-h264-build.git
+git push -u origin main
+
+Sau khi push xong, vào tab Actions trên GitHub → bấm Run workflow và đợi ~2–3 phút để tải wda-h264-test.ipa ở mục Artifacts.
+
+Bạn đang ở đúng màn hình rồi! Làm tiếp 3 bước ngắn ngay trên trang này:
+
+Tạo file workflow:
+
+Bấm vào ô Name your file..., gõ chính xác: .github/workflows/build-wda-h264.yml
+Mở build-wda-h264.yml, copy toàn bộ dán vào khung Enter file contents here → bấm nút xanh Commit changes... (góc trên phải) → Commit changes.
+
+Upload thư mục ios-h264-server:
+
+Quay lại trang gốc wda-h264-build (bấm chữ wda-h264-build màu xanh hoặc tab Code).
+Bấm nút + (bên phải ô nhánh main ở cột trái) → chọn Upload files.
+Kéo nguyên thư mục ios-h264-server thả vào → bấm Commit changes.
+
+Chạy build:
+
+Bấm tab Actions trên thanh menu → chọn Build WDA H264 Test IPA → bấm Run workflow.
+Đợi ~2–3 phút hoàn tất, tải file trong mục Artifacts (wda-h264-test-ipa).
+name: Build WDA H264 Test IPA
+on:
+  workflow_dispatch:
+    inputs:
+      wda_tag:
+        description: 'Appium WebDriverAgent tag'
+        required: true
+        default: 'v11.2.0'
+jobs:
+  build-ipa:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Clone WebDriverAgent
+        run: |
+          git clone --depth 1 --branch "${{ github.event.inputs.wda_tag }}" https://github.com/appium/WebDriverAgent.git wda-src
+      - name: Inject IFarmH264Server into WebDriverAgent
+        run: |
+          cp ios-h264-server/IFarmH264Server.h wda-src/WebDriverAgentLib/
+          cp ios-h264-server/IFarmH264Server.m wda-src/WebDriverAgentLib/
+          python3 - << 'PY'
+          import pathlib, re
+          fb = pathlib.Path('wda-src/WebDriverAgentLib/Routing/FBWebServer.m')
+          txt = fb.read_text(encoding='utf-8')
+          if 'IFarmH264Server.h' not in txt:
+            txt = '#import "IFarmH264Server.h"\n' + txt
+          if 'startWithPort:9101' not in txt:
+            txt = re.sub(
+              r'(\[self\.server\s+start:&error\]|\[self\s+startServing\])',
+              r'[[IFarmH264Server sharedServer] startWithPort:9101 fps:15 maxWidth:540 bitrateBps:1200000];\n  \1',
+              txt,
+              count=1
+            )
+          fb.write_text(txt, encoding='utf-8')
+          PY
+          gem install xcodeproj --no-document
+          ruby - << 'RB'
+          require 'xcodeproj'
+          proj = Xcodeproj::Project.open('wda-src/WebDriverAgent.xcodeproj')
+          lib_target = proj.targets.find { |t| t.name == 'WebDriverAgentLib' }
+          group = proj.main_group.find_subpath('WebDriverAgentLib', true)
+          h_ref = group.new_reference('IFarmH264Server.h')
