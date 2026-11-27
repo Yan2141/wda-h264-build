@@ -41,3 +41,41 @@ jobs:
           lib_target = proj.targets.find { |t| t.name == 'WebDriverAgentLib' }
           group = proj.main_group.find_subpath('WebDriverAgentLib', true)
           h_ref = group.new_reference('IFarmH264Server.h')
+		  m_ref = group.new_reference('IFarmH264Server.m')
+          lib_target.source_build_phase.add_file_reference(m_ref)
+          %w[VideoToolbox CoreVideo CoreMedia IOSurface QuartzCore].each do |fw|
+            lib_target.frameworks_build_phase.add_file_reference(
+              proj.frameworks_group.new_file("System/Library/Frameworks/#{fw}.framework", :sdk_root)
+            )
+          end
+          proj.save
+          RB
+      - name: Build WebDriverAgentRunner (iphoneos)
+        run: |
+          xcodebuild \
+            -project wda-src/WebDriverAgent.xcodeproj \
+            -scheme WebDriverAgentRunner \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath wda-build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+      - name: Install ldid & package wda-h264-test.ipa
+        run: |
+          brew install ldid
+          APP_DIR=$(find wda-build/Build/Products/Release-iphoneos -name "WebDriverAgentRunner-Runner.app" -maxdepth 2 | head -n 1)
+          rm -rf Payload && mkdir -p Payload
+          cp -R "$APP_DIR" Payload/
+          APP_BIN="Payload/WebDriverAgentRunner-Runner.app/WebDriverAgentRunner-Runner"
+          ldid -e "$APP_BIN" > orig_entitlements.plist || cp ios-h264-server/entitlements.plist orig_entitlements.plist
+          /usr/libexec/PlistBuddy -c "Merge ios-h264-server/entitlements.plist" orig_entitlements.plist || true
+          ldid -Sorig_entitlements.plist "$APP_BIN"
+          find Payload/WebDriverAgentRunner-Runner.app -type f \( -name "*.dylib" -o -perm +111 \) ! -path "$APP_BIN" -exec ldid -S {} \;
+          zip -qry wda-h264-test.ipa Payload
+      - name: Upload wda-h264-test.ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: wda-h264-test-ipa
+          path: wda-h264-test.ipa
