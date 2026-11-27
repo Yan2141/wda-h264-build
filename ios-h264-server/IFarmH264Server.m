@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 #import <VideoToolbox/VideoToolbox.h>
 #import <CoreVideo/CoreVideo.h>
+#import <IOSurface/IOSurfaceRef.h>
 #import <arpa/inet.h>
 #import <netinet/in.h>
 #import <netinet/tcp.h>
@@ -134,18 +135,12 @@ static void IFarmVTOutputCallback(void *outputCallbackRefCon,
     self.vtSession = NULL;
   }
 
-  NSDictionary *srcAttrs = @{
-    (id)kCVPixelBufferPixelFormatTypeKey: @((uint32_t)kCVPixelFormatType_32BGRA),
-    (id)kCVPixelBufferWidthKey: @(self.width),
-    (id)kCVPixelBufferHeightKey: @(self.height),
-    (id)kCVPixelBufferIOSurfacePropertiesKey: @{}
-  };
   OSStatus st = VTCompressionSessionCreate(kCFAllocatorDefault,
                                            self.width,
                                            self.height,
                                            kCMVideoCodecType_H264,
                                            NULL,
-                                           (__bridge CFDictionaryRef)srcAttrs,
+                                           NULL,
                                            NULL,
                                            IFarmVTOutputCallback,
                                            (__bridge void *)self,
@@ -223,24 +218,34 @@ static void IFarmVTOutputCallback(void *outputCallbackRefCon,
   if (!hasClients) return;
 
   CVPixelBufferRef pixelBuffer = NULL;
-  CVPixelBufferPoolRef pool = VTCompressionSessionGetPixelBufferPool(self.vtSession);
-  CVReturn cr = pool
-    ? CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer)
-    : CVPixelBufferCreate(kCFAllocatorDefault, self.width, self.height, kCVPixelFormatType_32BGRA, NULL, &pixelBuffer);
+  CVReturn cr = kCVReturnError;
+  NSDictionary *ioAttrs = @{
+    @"IOSurfaceWidth": @(self.width),
+    @"IOSurfaceHeight": @(self.height),
+    @"IOSurfaceBytesPerElement": @4,
+    @"IOSurfacePixelFormat": @((uint32_t)kCVPixelFormatType_32BGRA)
+  };
+  IOSurfaceRef surface = IOSurfaceCreate((__bridge CFDictionaryRef)ioAttrs);
+  if (surface) {
+    if (self.renderDisplayFn) {
+      self.renderDisplayFn(0, CFSTR("LCD"), surface, 0, 0);
+    }
+    cr = CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, surface, NULL, &pixelBuffer);
+    CFRelease(surface);
+  }
   if (cr != kCVReturnSuccess || !pixelBuffer) {
-    NSString *dbg = [NSString stringWithFormat:@"#ERR:pbCreate=%d pool=%p\n", (int)cr, pool];
+    cr = CVPixelBufferCreate(kCFAllocatorDefault, self.width, self.height, kCVPixelFormatType_32BGRA, NULL, &pixelBuffer);
+    if (cr == kCVReturnSuccess && pixelBuffer && CVPixelBufferLockBaseAddress(pixelBuffer, 0) == kCVReturnSuccess) {
+      void *base = CVPixelBufferGetBaseAddress(pixelBuffer);
+      size_t bpr = CVPixelBufferGetBytesPerRow(pixelBuffer);
+      if (base && bpr > 0) memset(base, 0x40, bpr * (size_t)self.height);
+      CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+    }
+  }
+  if (cr != kCVReturnSuccess || !pixelBuffer) {
+    NSString *dbg = [NSString stringWithFormat:@"#ERR:pbCreate=%d %dx%d\n", (int)cr, self.width, self.height];
     [self broadcastAnnexB:[dbg dataUsingEncoding:NSUTF8StringEncoding]];
     return;
-  }
-
-  IOSurfaceRef surface = CVPixelBufferGetIOSurface(pixelBuffer);
-  if (surface && self.renderDisplayFn) {
-    self.renderDisplayFn(0, CFSTR("LCD"), surface, 0, 0);
-  } else if (!self.renderDisplayFn && CVPixelBufferLockBaseAddress(pixelBuffer, 0) == kCVReturnSuccess) {
-    void *base = CVPixelBufferGetBaseAddress(pixelBuffer);
-    size_t bpr = CVPixelBufferGetBytesPerRow(pixelBuffer);
-    if (base && bpr > 0) memset(base, 0x40, bpr * (size_t)self.height);
-    CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
   }
 
   CMTime pts = CMTimeMake(self.frameIndex++, (int32_t)self.fps);
