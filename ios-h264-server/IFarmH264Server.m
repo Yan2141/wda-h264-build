@@ -132,16 +132,23 @@ static void IFarmVTOutputCallback(void *outputCallbackRefCon,
     self.vtSession = NULL;
   }
 
+  NSDictionary *srcAttrs = @{
+    (id)kCVPixelBufferPixelFormatTypeKey: @((uint32_t)kCVPixelFormatType_32BGRA),
+    (id)kCVPixelBufferWidthKey: @(self.width),
+    (id)kCVPixelBufferHeightKey: @(self.height),
+    (id)kCVPixelBufferIOSurfacePropertiesKey: @{}
+  };
   OSStatus st = VTCompressionSessionCreate(kCFAllocatorDefault,
                                            self.width,
                                            self.height,
                                            kCMVideoCodecType_H264,
                                            NULL,
-                                           NULL,
+                                           (__bridge CFDictionaryRef)srcAttrs,
                                            NULL,
                                            IFarmVTOutputCallback,
                                            (__bridge void *)self,
                                            &_vtSession);
+  NSLog(@"[IFarmH264Server] VTCompressionSessionCreate status=%d session=%p (%dx%d)", (int)st, self.vtSession, self.width, self.height);
   if (st != noErr || !self.vtSession) return;
 
   VTSessionSetProperty(self.vtSession, kVTCompressionPropertyKey_RealTime, kCFBooleanTrue);
@@ -175,6 +182,7 @@ static void IFarmVTOutputCallback(void *outputCallbackRefCon,
       setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
       int nosigpipe = 1;
       setsockopt(cfd, SOL_SOCKET, SO_NOSIGPIPE, &nosigpipe, sizeof(nosigpipe));
+      NSLog(@"[IFarmH264Server] Client accepted fd=%d vtSession=%p renderFn=%p", cfd, self.vtSession, self.renderDisplayFn);
       dispatch_async(self.netQueue, ^{
         [self.clientFds addObject:@(cfd)];
       });
@@ -224,8 +232,12 @@ static void IFarmVTOutputCallback(void *outputCallbackRefCon,
   }
 
   CMTime pts = CMTimeMake(self.frameIndex++, (int32_t)self.fps);
+  CMTime dur = CMTimeMake(1, (int32_t)self.fps);
   VTEncodeInfoFlags flags = 0;
-  VTCompressionSessionEncodeFrame(self.vtSession, pixelBuffer, pts, kCMTimeInvalid, NULL, NULL, &flags);
+  OSStatus encSt = VTCompressionSessionEncodeFrame(self.vtSession, pixelBuffer, pts, dur, NULL, NULL, &flags);
+  if (encSt != noErr || self.frameIndex <= 3) {
+    NSLog(@"[IFarmH264Server] encode frame=%lld status=%d flags=%u", self.frameIndex, (int)encSt, (unsigned)flags);
+  }
   CVPixelBufferRelease(pixelBuffer);
 }
 
@@ -282,7 +294,10 @@ static void IFarmVTOutputCallback(void *outputCallbackRefCon,
                                   OSStatus status,
                                   VTEncodeInfoFlags infoFlags,
                                   CMSampleBufferRef sampleBuffer) {
-  if (status != noErr || !sampleBuffer || !CMSampleBufferDataIsReady(sampleBuffer)) return;
+  if (status != noErr || !sampleBuffer || !CMSampleBufferDataIsReady(sampleBuffer)) {
+    NSLog(@"[IFarmH264Server] VTOutputCallback err status=%d ready=%d", (int)status, sampleBuffer ? (int)CMSampleBufferDataIsReady(sampleBuffer) : -1);
+    return;
+  }
   IFarmH264Server *server = (__bridge IFarmH264Server *)outputCallbackRefCon;
 
   NSMutableData *annexB = [NSMutableData data];
