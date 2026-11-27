@@ -83,6 +83,8 @@ jobs:
           APP_DIR=$(find wda-build/Build/Products/Release-iphoneos -name "WebDriverAgentRunner-Runner.app" -maxdepth 2 | head -n 1)
           rm -rf Payload && mkdir -p Payload
           cp -R "$APP_DIR" Payload/
+          find Payload -name "*.dSYM" -exec rm -rf {} +
+          find Payload -name "_CodeSignature" -exec rm -rf {} +
           APP_BIN="Payload/WebDriverAgentRunner-Runner.app/WebDriverAgentRunner-Runner"
           ldid -e "$APP_BIN" > orig_entitlements.plist 2>/dev/null || true
           if [ ! -s orig_entitlements.plist ]; then
@@ -91,7 +93,6 @@ jobs:
             /usr/libexec/PlistBuddy -c "Merge ios-h264-server/entitlements.plist" orig_entitlements.plist || true
           fi
           ldid -Sorig_entitlements.plist "$APP_BIN"
-          find Payload/WebDriverAgentRunner-Runner.app -type f \( -name "*.dylib" -o -perm +111 \) ! -path "$APP_BIN" -exec ldid -S {} \;
           zip -qry wda-h264-test.ipa Payload
 
       - name: Upload wda-h264-test.ipa
