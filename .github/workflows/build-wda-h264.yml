@@ -84,8 +84,12 @@ jobs:
           rm -rf Payload && mkdir -p Payload
           cp -R "$APP_DIR" Payload/
           APP_BIN="Payload/WebDriverAgentRunner-Runner.app/WebDriverAgentRunner-Runner"
-          ldid -e "$APP_BIN" > orig_entitlements.plist || cp ios-h264-server/entitlements.plist orig_entitlements.plist
-          /usr/libexec/PlistBuddy -c "Merge ios-h264-server/entitlements.plist" orig_entitlements.plist || true
+          ldid -e "$APP_BIN" > orig_entitlements.plist 2>/dev/null || true
+          if [ ! -s orig_entitlements.plist ]; then
+            cp ios-h264-server/entitlements.plist orig_entitlements.plist
+          else
+            /usr/libexec/PlistBuddy -c "Merge ios-h264-server/entitlements.plist" orig_entitlements.plist || true
+          fi
           ldid -Sorig_entitlements.plist "$APP_BIN"
           find Payload/WebDriverAgentRunner-Runner.app -type f \( -name "*.dylib" -o -perm +111 \) ! -path "$APP_BIN" -exec ldid -S {} \;
           zip -qry wda-h264-test.ipa Payload
