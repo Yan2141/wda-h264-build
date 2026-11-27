@@ -63,13 +63,14 @@ jobs:
           xcodebuild \
             -project wda-src/WebDriverAgent.xcodeproj \
             -scheme WebDriverAgentRunner \
+            -destination 'generic/platform=iOS' \
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath wda-build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build
+            build-for-testing
 
       - name: Install ldid & package wda-h264-test.ipa
         run: |
