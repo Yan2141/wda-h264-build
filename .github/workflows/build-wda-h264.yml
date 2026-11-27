@@ -43,10 +43,15 @@ jobs:
 
           gem install xcodeproj --no-document
           ruby - << 'RB'
+          require 'fileutils'
           require 'xcodeproj'
           proj = Xcodeproj::Project.open('wda-src/WebDriverAgent.xcodeproj')
           lib_target = proj.targets.find { |t| t.name == 'WebDriverAgentLib' }
           group = proj.main_group.find_subpath('WebDriverAgentLib', true)
+          dest_dir = group.real_path.to_s
+          FileUtils.mkdir_p(dest_dir)
+          FileUtils.cp('ios-h264-server/IFarmH264Server.h', dest_dir)
+          FileUtils.cp('ios-h264-server/IFarmH264Server.m', dest_dir)
           h_ref = group.new_reference('IFarmH264Server.h')
           m_ref = group.new_reference('IFarmH264Server.m')
           lib_target.source_build_phase.add_file_reference(m_ref)
