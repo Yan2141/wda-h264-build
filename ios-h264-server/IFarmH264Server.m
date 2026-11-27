@@ -222,33 +222,25 @@ static void IFarmVTOutputCallback(void *outputCallbackRefCon,
   });
   if (!hasClients) return;
 
-  NSDictionary *pbAttrs = @{
-    (id)kCVPixelBufferIOSurfacePropertiesKey: @{}
-  };
   CVPixelBufferRef pixelBuffer = NULL;
-  CVReturn cr = CVPixelBufferCreate(kCFAllocatorDefault,
-                                    self.width,
-                                    self.height,
-                                    kCVPixelFormatType_32BGRA,
-                                    (__bridge CFDictionaryRef)pbAttrs,
-                                    &pixelBuffer);
+  CVPixelBufferPoolRef pool = VTCompressionSessionGetPixelBufferPool(self.vtSession);
+  CVReturn cr = pool
+    ? CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer)
+    : CVPixelBufferCreate(kCFAllocatorDefault, self.width, self.height, kCVPixelFormatType_32BGRA, NULL, &pixelBuffer);
   if (cr != kCVReturnSuccess || !pixelBuffer) {
-    NSString *dbg = [NSString stringWithFormat:@"#ERR:pbCreate=%d\n", (int)cr];
+    NSString *dbg = [NSString stringWithFormat:@"#ERR:pbCreate=%d pool=%p\n", (int)cr, pool];
     [self broadcastAnnexB:[dbg dataUsingEncoding:NSUTF8StringEncoding]];
     return;
   }
 
-  // Khung đầu tiên: điền nền BGRA mẫu để xác minh encoder + callback + TCP
-  if (self.frameIndex == 0 && CVPixelBufferLockBaseAddress(pixelBuffer, 0) == kCVReturnSuccess) {
+  IOSurfaceRef surface = CVPixelBufferGetIOSurface(pixelBuffer);
+  if (surface && self.renderDisplayFn) {
+    self.renderDisplayFn(0, CFSTR("LCD"), surface, 0, 0);
+  } else if (!self.renderDisplayFn && CVPixelBufferLockBaseAddress(pixelBuffer, 0) == kCVReturnSuccess) {
     void *base = CVPixelBufferGetBaseAddress(pixelBuffer);
     size_t bpr = CVPixelBufferGetBytesPerRow(pixelBuffer);
     if (base && bpr > 0) memset(base, 0x40, bpr * (size_t)self.height);
     CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
-  }
-
-  IOSurfaceRef surface = CVPixelBufferGetIOSurface(pixelBuffer);
-  if (surface && self.renderDisplayFn && self.frameIndex > 0) {
-    self.renderDisplayFn(0, CFSTR("LCD"), surface, 0, 0);
   }
 
   CMTime pts = CMTimeMake(self.frameIndex++, (int32_t)self.fps);
