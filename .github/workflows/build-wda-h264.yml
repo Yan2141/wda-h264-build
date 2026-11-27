@@ -1,4 +1,5 @@
 name: Build WDA H264 Test IPA
+
 on:
   workflow_dispatch:
     inputs:
@@ -6,21 +7,26 @@ on:
         description: 'Appium WebDriverAgent tag'
         required: true
         default: 'v11.2.0'
+
 jobs:
   build-ipa:
     runs-on: macos-15
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
       - name: Clone WebDriverAgent
         run: |
           git clone --depth 1 --branch "${{ github.event.inputs.wda_tag }}" https://github.com/appium/WebDriverAgent.git wda-src
+
       - name: Inject IFarmH264Server into WebDriverAgent
         run: |
           cp ios-h264-server/IFarmH264Server.h wda-src/WebDriverAgentLib/
           cp ios-h264-server/IFarmH264Server.m wda-src/WebDriverAgentLib/
+
           python3 - << 'PY'
           import pathlib, re
+
           fb = pathlib.Path('wda-src/WebDriverAgentLib/Routing/FBWebServer.m')
           txt = fb.read_text(encoding='utf-8')
           if 'IFarmH264Server.h' not in txt:
@@ -34,6 +40,7 @@ jobs:
             )
           fb.write_text(txt, encoding='utf-8')
           PY
+
           gem install xcodeproj --no-document
           ruby - << 'RB'
           require 'xcodeproj'
@@ -41,7 +48,7 @@ jobs:
           lib_target = proj.targets.find { |t| t.name == 'WebDriverAgentLib' }
           group = proj.main_group.find_subpath('WebDriverAgentLib', true)
           h_ref = group.new_reference('IFarmH264Server.h')
-		  m_ref = group.new_reference('IFarmH264Server.m')
+          m_ref = group.new_reference('IFarmH264Server.m')
           lib_target.source_build_phase.add_file_reference(m_ref)
           %w[VideoToolbox CoreVideo CoreMedia IOSurface QuartzCore].each do |fw|
             lib_target.frameworks_build_phase.add_file_reference(
@@ -50,6 +57,7 @@ jobs:
           end
           proj.save
           RB
+
       - name: Build WebDriverAgentRunner (iphoneos)
         run: |
           xcodebuild \
@@ -62,6 +70,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             build
+
       - name: Install ldid & package wda-h264-test.ipa
         run: |
           brew install ldid
@@ -74,6 +83,7 @@ jobs:
           ldid -Sorig_entitlements.plist "$APP_BIN"
           find Payload/WebDriverAgentRunner-Runner.app -type f \( -name "*.dylib" -o -perm +111 \) ! -path "$APP_BIN" -exec ldid -S {} \;
           zip -qry wda-h264-test.ipa Payload
+
       - name: Upload wda-h264-test.ipa
         uses: actions/upload-artifact@v4
         with:
